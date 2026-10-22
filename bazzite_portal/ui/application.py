@@ -2946,18 +2946,34 @@ class Window(Adw.ApplicationWindow, SystemManagementUI):
         current_gtk_theme = self.store.preferences()["gtk_theme"]
         if current_gtk_theme not in self.gtk_theme_values:
             current_gtk_theme = "system"
-        self.gtk_theme_dropdown = Gtk.DropDown(
-            model=Gtk.StringList.new(gtk_theme_names), valign=Gtk.Align.CENTER)
+        self.gtk_theme_dropdown = Gtk.DropDown(model=Gtk.StringList.new(gtk_theme_names), valign=Gtk.Align.CENTER)
         self.gtk_theme_dropdown.controller_exclude_focus = True
         self.gtk_theme_dropdown.set_selected(self.gtk_theme_values.index(current_gtk_theme))
         self.gtk_theme_dropdown.connect("notify::selected", self._gtk_theme_selected)
+        self.gtk_theme_choice, gtk_theme_choice = choice_label(gtk_theme_names, self.gtk_theme_dropdown.get_selected())
+        self.gtk_theme_controls = Gtk.Box(spacing=4, valign=Gtk.Align.CENTER)
+        self.gtk_theme_controls.add_css_class("controller-style-pill")
+        for icon_name, delta in (("pan-start-symbolic", -1), ("pan-end-symbolic", 1)):
+            arrow = Gtk.Button.new_from_icon_name(icon_name)
+            arrow.set_focusable(False)
+            arrow.add_css_class("flat")
+            arrow.connect("clicked", lambda _button, step=delta: self._cycle_gtk_theme(step))
+            self.gtk_theme_controls.append(arrow)
+            if delta == -1:
+                self.gtk_theme_controls.append(gtk_theme_choice)
+        self.gtk_theme_row.add_suffix(self.gtk_theme_controls)
         self.gtk_theme_row.add_suffix(self.gtk_theme_dropdown)
+        self.gtk_theme_controls.set_size_request(-1, 36)
+        self.gtk_theme_dropdown.set_size_request(-1, 36)
+        self.gtk_theme_controls.set_hexpand(False)
+        self.gtk_theme_controls.set_halign(Gtk.Align.END)
+        self.gtk_theme_dropdown.set_hexpand(False)
+        self.gtk_theme_dropdown.set_halign(Gtk.Align.END)
+        self.gtk_theme_size_group = Gtk.SizeGroup(mode=Gtk.SizeGroupMode.HORIZONTAL)
+        self.gtk_theme_size_group.add_widget(self.gtk_theme_controls)
+        self.gtk_theme_size_group.add_widget(self.gtk_theme_dropdown)
         self.gtk_theme_row.set_activatable(True)
-        self.gtk_theme_row.connect(
-            "activated",
-            lambda *_: self.gtk_theme_dropdown.emit("activate") if not self.controller_navigation
-            else self._cycle_gtk_theme(1),
-        )
+        self.gtk_theme_row.connect("activated", lambda *_: self.gtk_theme_dropdown.emit("activate") if not self.controller_navigation else self._cycle_gtk_theme(1))
         preferences.add(self.gtk_theme_row)
         self.color_scheme_values = ("system", "light", "dark")
         color_scheme_names = (_("System"), _("Light"), _("Dark"))
@@ -2966,19 +2982,35 @@ class Window(Adw.ApplicationWindow, SystemManagementUI):
             subtitle=_("Follow the desktop setting or choose a light or dark appearance."),
         )
         self.color_scheme_row.controller_focus_row = True
-        self.color_scheme_dropdown = Gtk.DropDown(
-            model=Gtk.StringList.new(color_scheme_names), valign=Gtk.Align.CENTER)
+        self.color_scheme_dropdown = Gtk.DropDown(model=Gtk.StringList.new(color_scheme_names), valign=Gtk.Align.CENTER)
         self.color_scheme_dropdown.controller_exclude_focus = True
         self.color_scheme_dropdown.set_selected(
             self.color_scheme_values.index(self.store.preferences()["color_scheme"]))
         self.color_scheme_dropdown.connect("notify::selected", self._color_scheme_selected)
+        self.color_scheme_choice, color_scheme_choice = choice_label(color_scheme_names, self.color_scheme_dropdown.get_selected())
+        self.color_scheme_controls = Gtk.Box(spacing=4, valign=Gtk.Align.CENTER)
+        self.color_scheme_controls.add_css_class("controller-style-pill")
+        for icon_name, delta in (("pan-start-symbolic", -1), ("pan-end-symbolic", 1)):
+            arrow = Gtk.Button.new_from_icon_name(icon_name)
+            arrow.set_focusable(False)
+            arrow.add_css_class("flat")
+            arrow.connect("clicked", lambda _button, step=delta: self._cycle_color_scheme(step))
+            self.color_scheme_controls.append(arrow)
+            if delta == -1:
+                self.color_scheme_controls.append(color_scheme_choice)
+        self.color_scheme_row.add_suffix(self.color_scheme_controls)
         self.color_scheme_row.add_suffix(self.color_scheme_dropdown)
+        self.color_scheme_controls.set_size_request(-1, 36)
+        self.color_scheme_dropdown.set_size_request(-1, 36)
+        self.color_scheme_controls.set_hexpand(False)
+        self.color_scheme_controls.set_halign(Gtk.Align.END)
+        self.color_scheme_dropdown.set_hexpand(False)
+        self.color_scheme_dropdown.set_halign(Gtk.Align.END)
+        self.color_scheme_size_group = Gtk.SizeGroup(mode=Gtk.SizeGroupMode.HORIZONTAL)
+        self.color_scheme_size_group.add_widget(self.color_scheme_controls)
+        self.color_scheme_size_group.add_widget(self.color_scheme_dropdown)
         self.color_scheme_row.set_activatable(True)
-        self.color_scheme_row.connect(
-            "activated",
-            lambda *_: self.color_scheme_dropdown.emit("activate") if not self.controller_navigation
-            else self._cycle_color_scheme(1),
-        )
+        self.color_scheme_row.connect("activated", lambda *_: self.color_scheme_dropdown.emit("activate") if not self.controller_navigation else self._cycle_color_scheme(1))
         preferences.add(self.color_scheme_row)
         self._sync_controller_style_mode()
         box.append(preferences)
@@ -3116,6 +3148,7 @@ class Window(Adw.ApplicationWindow, SystemManagementUI):
         selected = dropdown.get_selected()
         if selected < len(self.gtk_theme_values):
             self._preference("gtk_theme", self.gtk_theme_values[selected])
+            self.gtk_theme_choice.set_text(self.gtk_theme_dropdown.get_selected_item().get_string())
 
     def _cycle_gtk_theme(self, delta):
         selected = self.gtk_theme_dropdown.get_selected()
@@ -3127,6 +3160,8 @@ class Window(Adw.ApplicationWindow, SystemManagementUI):
         selected = dropdown.get_selected()
         if selected < len(self.color_scheme_values):
             self._preference("color_scheme", self.color_scheme_values[selected])
+            self.color_scheme_choice.set_text(
+                (_("System"), _("Light"), _("Dark"))[selected])
 
     def _cycle_color_scheme(self, delta):
         selected = self.color_scheme_dropdown.get_selected()
@@ -3140,6 +3175,12 @@ class Window(Adw.ApplicationWindow, SystemManagementUI):
         if hasattr(self, "notification_theme_dropdown"):
             self.notification_theme_controls.set_visible(self.controller_navigation)
             self.notification_theme_dropdown.set_visible(not self.controller_navigation)
+        if hasattr(self, "gtk_theme_dropdown"):
+            self.gtk_theme_controls.set_visible(self.controller_navigation)
+            self.gtk_theme_dropdown.set_visible(not self.controller_navigation)
+        if hasattr(self, "color_scheme_dropdown"):
+            self.color_scheme_controls.set_visible(self.controller_navigation)
+            self.color_scheme_dropdown.set_visible(not self.controller_navigation)
 
     def _cycle_controller_style(self, delta):
         selected = self.controller_style_dropdown.get_selected()
@@ -3160,8 +3201,12 @@ class Window(Adw.ApplicationWindow, SystemManagementUI):
             self.gtk_theme_dropdown.set_selected(
                 self.gtk_theme_values.index(self.store.preferences()["gtk_theme"])
                 if self.store.preferences()["gtk_theme"] in self.gtk_theme_values else 0)
+            self.gtk_theme_choice.set_text(
+                self.gtk_theme_dropdown.get_selected_item().get_string())
             self.color_scheme_dropdown.set_selected(
                 self.color_scheme_values.index(self.store.preferences()["color_scheme"]))
+            self.color_scheme_choice.set_text(
+                (_("System"), _("Light"), _("Dark"))[self.color_scheme_dropdown.get_selected()])
             from bazzite_portal.artwork.appearance import THEMES, THEME_NAMES
             self.notification_theme_dropdown.set_selected(THEMES.index(self.store.preferences()["notification_icon_theme"]))
             self.notification_theme_choice.set_text(_(THEME_NAMES[self.notification_theme_dropdown.get_selected()][1]))

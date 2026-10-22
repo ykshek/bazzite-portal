@@ -126,10 +126,14 @@ class Store:
             elif key == "notification_icon_theme":
                 result[key] = value if isinstance(value, str) and value in THEMES else default
             elif key == "gtk_theme":
-                result[key] = value if isinstance(value, str) and value and len(value) <= 128
-                                        and value not in (".", "..")
-                                        and not any(char in value for char in ("/", "\\", "\0"))
-                                        and all(ord(char) >= 32 for char in value) else default
+                result[key] = (
+                    value
+                    if isinstance(value, str) and value and len(value) <= 128
+                    and value not in (".", "..")
+                    and not any(char in value for char in ("/", "\\", "\0"))
+                    and all(ord(char) >= 32 for char in value)
+                    else default
+                )
             elif key == "color_scheme":
                 result[key] = value if isinstance(value, str) and value in COLOR_SCHEMES else default
             else:
