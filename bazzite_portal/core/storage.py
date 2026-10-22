@@ -16,8 +16,11 @@ DEFAULTS = {"show_indicator": True, "open_at_login": False, "show_logs": False,
             "skip_one_shot_confirmation": False,
             "always_show_controller_prompts": False,
             "controller_prompt_style": "auto",
-            "notification_icon_theme": "spinning"}
+            "notification_icon_theme": "spinning",
+            "gtk_theme": "system",
+            "color_scheme": "system"}
 PROMPT_STYLES = frozenset(("auto", "xbox", "playstation"))
+COLOR_SCHEMES = frozenset(("system", "light", "dark"))
 _THREAD_LOCK = threading.RLock()
 
 
@@ -122,6 +125,13 @@ class Store:
                 result[key] = value if isinstance(value, str) and value in PROMPT_STYLES else default
             elif key == "notification_icon_theme":
                 result[key] = value if isinstance(value, str) and value in THEMES else default
+            elif key == "gtk_theme":
+                result[key] = value if isinstance(value, str) and value and len(value) <= 128
+                                        and value not in (".", "..")
+                                        and not any(char in value for char in ("/", "\\", "\0"))
+                                        and all(ord(char) >= 32 for char in value) else default
+            elif key == "color_scheme":
+                result[key] = value if isinstance(value, str) and value in COLOR_SCHEMES else default
             else:
                 result[key] = default
         return result
@@ -192,6 +202,13 @@ class Store:
         if key == "controller_prompt_style" and (not isinstance(value, str) or value not in PROMPT_STYLES):
             return False
         if key == "notification_icon_theme" and (not isinstance(value, str) or value not in THEMES):
+            return False
+        if key == "gtk_theme" and (not isinstance(value, str) or not value or len(value) > 128
+                                   or value in (".", "..")
+                                   or any(char in value for char in ("/", "\\", "\0"))
+                                   or any(ord(char) < 32 for char in value)):
+            return False
+        if key == "color_scheme" and (not isinstance(value, str) or value not in COLOR_SCHEMES):
             return False
         try:
             with self.locked():

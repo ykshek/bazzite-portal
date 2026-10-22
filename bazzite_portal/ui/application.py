@@ -35,6 +35,7 @@ from bazzite_portal.input.controller import (
     controller_button_glyph,
 )
 from bazzite_portal.core.storage import Store
+from bazzite_portal.core.gtk_themes import list_gtk4_themes
 from bazzite_portal.core.i18n import C_, N_, _, channel_name, format_message
 from bazzite_portal.core.errors import error_text, public_error
 from bazzite_portal.input.prompts import set_prompt_visible
@@ -2934,6 +2935,51 @@ class Window(Adw.ApplicationWindow, SystemManagementUI):
         self.notification_theme_row.set_activatable(True)
         self.notification_theme_row.connect("activated", lambda *_: self.notification_theme_dropdown.emit("activate") if not self.controller_navigation else None)
         preferences.add(self.notification_theme_row)
+        installed_themes = list_gtk4_themes()
+        self.gtk_theme_values = ("system", "Adwaita", *installed_themes)
+        gtk_theme_names = [_("System"), "Adwaita", *installed_themes]
+        self.gtk_theme_row = Adw.ActionRow(
+            title=_("GTK theme"),
+            subtitle=_("Use the desktop theme or choose an installed GTK 4 theme."),
+        )
+        self.gtk_theme_row.controller_focus_row = True
+        current_gtk_theme = self.store.preferences()["gtk_theme"]
+        if current_gtk_theme not in self.gtk_theme_values:
+            current_gtk_theme = "system"
+        self.gtk_theme_dropdown = Gtk.DropDown(
+            model=Gtk.StringList.new(gtk_theme_names), valign=Gtk.Align.CENTER)
+        self.gtk_theme_dropdown.controller_exclude_focus = True
+        self.gtk_theme_dropdown.set_selected(self.gtk_theme_values.index(current_gtk_theme))
+        self.gtk_theme_dropdown.connect("notify::selected", self._gtk_theme_selected)
+        self.gtk_theme_row.add_suffix(self.gtk_theme_dropdown)
+        self.gtk_theme_row.set_activatable(True)
+        self.gtk_theme_row.connect(
+            "activated",
+            lambda *_: self.gtk_theme_dropdown.emit("activate") if not self.controller_navigation
+            else self._cycle_gtk_theme(1),
+        )
+        preferences.add(self.gtk_theme_row)
+        self.color_scheme_values = ("system", "light", "dark")
+        color_scheme_names = (_("System"), _("Light"), _("Dark"))
+        self.color_scheme_row = Adw.ActionRow(
+            title=_("Color scheme"),
+            subtitle=_("Follow the desktop setting or choose a light or dark appearance."),
+        )
+        self.color_scheme_row.controller_focus_row = True
+        self.color_scheme_dropdown = Gtk.DropDown(
+            model=Gtk.StringList.new(color_scheme_names), valign=Gtk.Align.CENTER)
+        self.color_scheme_dropdown.controller_exclude_focus = True
+        self.color_scheme_dropdown.set_selected(
+            self.color_scheme_values.index(self.store.preferences()["color_scheme"]))
+        self.color_scheme_dropdown.connect("notify::selected", self._color_scheme_selected)
+        self.color_scheme_row.add_suffix(self.color_scheme_dropdown)
+        self.color_scheme_row.set_activatable(True)
+        self.color_scheme_row.connect(
+            "activated",
+            lambda *_: self.color_scheme_dropdown.emit("activate") if not self.controller_navigation
+            else self._cycle_color_scheme(1),
+        )
+        preferences.add(self.color_scheme_row)
         self._sync_controller_style_mode()
         box.append(preferences)
         steam_group = group("Steam")
@@ -3023,6 +3069,10 @@ class Window(Adw.ApplicationWindow, SystemManagementUI):
             self._render_status()
         if key == "notification_icon_theme":
             self._render_home_activity()
+        if key in {"gtk_theme", "color_scheme"}:
+            preferences = self.store.preferences()
+            preferences[key] = value
+            self.get_application().apply_appearance(preferences)
         if key in {"always_show_controller_prompts", "controller_prompt_style"}:
             self._refresh_all_prompts()
             set_prompt_visible(self.legend, self._prompts_visible())
@@ -3060,6 +3110,28 @@ class Window(Adw.ApplicationWindow, SystemManagementUI):
         from bazzite_portal.artwork.appearance import THEMES
         self.notification_theme_dropdown.set_selected((self.notification_theme_dropdown.get_selected() + delta) % len(THEMES))
 
+    def _gtk_theme_selected(self, dropdown, _property):
+        if self.updating_settings:
+            return
+        selected = dropdown.get_selected()
+        if selected < len(self.gtk_theme_values):
+            self._preference("gtk_theme", self.gtk_theme_values[selected])
+
+    def _cycle_gtk_theme(self, delta):
+        selected = self.gtk_theme_dropdown.get_selected()
+        self.gtk_theme_dropdown.set_selected((selected + delta) % len(self.gtk_theme_values))
+
+    def _color_scheme_selected(self, dropdown, _property):
+        if self.updating_settings:
+            return
+        selected = dropdown.get_selected()
+        if selected < len(self.color_scheme_values):
+            self._preference("color_scheme", self.color_scheme_values[selected])
+
+    def _cycle_color_scheme(self, delta):
+        selected = self.color_scheme_dropdown.get_selected()
+        self.color_scheme_dropdown.set_selected((selected + delta) % len(self.color_scheme_values))
+
     def _sync_controller_style_mode(self):
         if not hasattr(self, "controller_style_dropdown"):
             return
@@ -3085,6 +3157,11 @@ class Window(Adw.ApplicationWindow, SystemManagementUI):
                 switch.set_active(not self.store.preferences()[key] if key == "show_indicator" else self.store.preferences()[key])
             self.controller_style_dropdown.set_selected(("auto", "xbox", "playstation").index(
                 self.store.preferences()["controller_prompt_style"]))
+            self.gtk_theme_dropdown.set_selected(
+                self.gtk_theme_values.index(self.store.preferences()["gtk_theme"])
+                if self.store.preferences()["gtk_theme"] in self.gtk_theme_values else 0)
+            self.color_scheme_dropdown.set_selected(
+                self.color_scheme_values.index(self.store.preferences()["color_scheme"]))
             from bazzite_portal.artwork.appearance import THEMES, THEME_NAMES
             self.notification_theme_dropdown.set_selected(THEMES.index(self.store.preferences()["notification_icon_theme"]))
             self.notification_theme_choice.set_text(_(THEME_NAMES[self.notification_theme_dropdown.get_selected()][1]))
@@ -3098,6 +3175,7 @@ class Window(Adw.ApplicationWindow, SystemManagementUI):
             self._sync_tool_favorites()
             self._render_home_activity()
             self._set_update_console(self.store.preferences()["show_logs"])
+            self.get_application().apply_appearance(self.store.preferences())
             self.settings_errors.set_text("\n".join(public_error(error, N_("Could not save or load app preferences. Open Logs for details."), context='App preferences') for error in self.store.errors))
             self.toast(N_("Local app data cleared."))
         if self.client:
@@ -3484,6 +3562,18 @@ class Window(Adw.ApplicationWindow, SystemManagementUI):
             self._set_controller_focus(self.notification_theme_row)
             self._update_controller_legend(labels)
             return
+        if (not self.modal and self.stack.get_visible_child_name() == "Settings"
+                and focus_now is self.gtk_theme_row and command in ("left", "right")):
+            self._cycle_gtk_theme(-1 if command == "left" else 1)
+            self._set_controller_focus(self.gtk_theme_row)
+            self._update_controller_legend(labels)
+            return
+        if (not self.modal and self.stack.get_visible_child_name() == "Settings"
+                and focus_now is self.color_scheme_row and command in ("left", "right")):
+            self._cycle_color_scheme(-1 if command == "left" else 1)
+            self._set_controller_focus(self.color_scheme_row)
+            self._update_controller_legend(labels)
+            return
         if (self.stack.get_visible_child_name() == "Settings" and focus_now is self.controller_style_row
                 and command in ("left", "right")):
             self._cycle_controller_style(-1 if command == "left" else 1)
@@ -3692,19 +3782,43 @@ class Application(Adw.Application):
         super().__init__(application_id=APP_ID, flags=Gio.ApplicationFlags.HANDLES_COMMAND_LINE)
         self.config_path, self.initial_updates = config_path, updates
         self.window = None
+        self.store = Store()
+        self.system_gtk_theme = "Adwaita"
         self.add_main_option("updates", 0, GLib.OptionFlags.NONE, GLib.OptionArg.NONE, N_("Open Updates"), None)
         self.add_main_option("action-id", 0, GLib.OptionFlags.NONE, GLib.OptionArg.STRING, N_("Open a Portal tool"), "ID")
 
     def do_startup(self):
         Adw.Application.do_startup(self)
         Gtk.Window.set_default_icon_name(APP_ID)
-        if gaming_mode():
-            self.get_style_manager().set_color_scheme(Adw.ColorScheme.FORCE_DARK)
+        settings = Gtk.Settings.get_default()
+        if settings is not None:
+            self.system_gtk_theme = settings.get_property("gtk-theme-name") or "Adwaita"
+        self.apply_appearance()
         for name, callback in (("settings", lambda: self.activate_page("Settings")), ("updates", lambda: self.activate_page(N_("Updates"))), ("about", lambda: self.window.about())):
             action = Gio.SimpleAction.new(name, None)
             action.connect("activate", lambda _, __, selected=callback: selected())
             self.add_action(action)
         self.set_accels_for_action("app.settings", ["<Primary>comma"])
+
+    def apply_appearance(self, preferences=None):
+        preferences = preferences or self.store.preferences()
+        settings = Gtk.Settings.get_default()
+        if settings is not None:
+            theme_name = preferences.get("gtk_theme", "system")
+            if theme_name != "system" and theme_name not in {"Adwaita", *list_gtk4_themes()}:
+                theme_name = "system"
+            settings.set_property(
+                "gtk-theme-name",
+                self.system_gtk_theme if theme_name == "system" else theme_name,
+            )
+
+        scheme = preferences.get("color_scheme", "system")
+        color_schemes = {
+            "light": Adw.ColorScheme.FORCE_LIGHT,
+            "dark": Adw.ColorScheme.FORCE_DARK,
+        }
+        default_scheme = Adw.ColorScheme.FORCE_DARK if gaming_mode() else Adw.ColorScheme.DEFAULT
+        self.get_style_manager().set_color_scheme(color_schemes.get(scheme, default_scheme))
 
     def do_activate(self):
         if not self.window:
