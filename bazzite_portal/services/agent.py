@@ -29,7 +29,7 @@ from bazzite_portal.updates.monitor import (
 from bazzite_portal.services.tray import Tray
 from bazzite_portal.artwork.appearance import artwork_kind
 from bazzite_portal.updates.model import indicator
-from bazzite_portal.core.i18n import C_, N_, format_message
+from bazzite_portal.core.i18n import C_, N_, format_message, set_language
 
 log = logging.getLogger(__name__)
 
@@ -311,8 +311,9 @@ class Agent:
             self._preferences_changed()
 
     def _preferences_changed(self):
+        preferences = self.store.preferences()
+        set_language(preferences["language"])
         if self.tray:
-            preferences = self.store.preferences()
             semantic = indicator(self.monitor.snapshot, preferences, self._runtime_dismissed,
                                  bool(self.visible_clients))
             theme = preferences.get("notification_icon_theme", "spinning")

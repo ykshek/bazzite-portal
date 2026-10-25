@@ -8,6 +8,7 @@ import tempfile
 import threading
 import shutil
 from bazzite_portal.artwork.appearance import THEMES
+from bazzite_portal.core.i18n import SUPPORTED_LANGUAGES
 
 MAX_BYTES = 1024 * 1024
 DEFAULTS = {"show_indicator": True, "open_at_login": False, "show_logs": False,
@@ -16,7 +17,8 @@ DEFAULTS = {"show_indicator": True, "open_at_login": False, "show_logs": False,
             "skip_one_shot_confirmation": False,
             "always_show_controller_prompts": False,
             "controller_prompt_style": "auto",
-            "notification_icon_theme": "spinning"}
+            "notification_icon_theme": "spinning",
+            "language": "system"}
 PROMPT_STYLES = frozenset(("auto", "xbox", "playstation"))
 _THREAD_LOCK = threading.RLock()
 
@@ -122,6 +124,8 @@ class Store:
                 result[key] = value if isinstance(value, str) and value in PROMPT_STYLES else default
             elif key == "notification_icon_theme":
                 result[key] = value if isinstance(value, str) and value in THEMES else default
+            elif key == "language":
+                result[key] = value if isinstance(value, str) and value in SUPPORTED_LANGUAGES else default
             else:
                 result[key] = default
         return result
@@ -192,6 +196,8 @@ class Store:
         if key == "controller_prompt_style" and (not isinstance(value, str) or value not in PROMPT_STYLES):
             return False
         if key == "notification_icon_theme" and (not isinstance(value, str) or value not in THEMES):
+            return False
+        if key == "language" and (not isinstance(value, str) or value not in SUPPORTED_LANGUAGES):
             return False
         try:
             with self.locked():

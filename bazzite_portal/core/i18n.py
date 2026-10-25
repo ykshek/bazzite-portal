@@ -18,7 +18,9 @@ try:
 except locale.Error:
     # A missing OS locale must not prevent the app from opening.
     pass
-_translation = _gettext.translation(DOMAIN, localedir=LOCALE_DIR, fallback=True)
+_translation = None
+_translation_language = None
+_active_language = None
 _FIXED_NAMES = frozenset({
     "Bazzite Portal", "Bazzite", "Steam", "Homebrew", "Flatpak", "Universal Blue",
     "GitHub", "GNOME", "KDE Plasma", "Xbox", "PlayStation", "RPM-OSTree", "UUPD",
@@ -36,18 +38,18 @@ def channel_name(track):
 def gettext(message):
     if message in _FIXED_NAMES:
         return message
-    return _translation.gettext(message) if message else message
+    return _get_translation().gettext(message) if message else message
 
 
 _ = gettext
 
 
 def ngettext(singular, plural, count):
-    return _translation.ngettext(singular, plural, count)
+    return _get_translation().ngettext(singular, plural, count)
 
 
 def pgettext(context, message):
-    return _translation.pgettext(context, message)
+    return _get_translation().pgettext(context, message)
 
 
 def N_(message):
@@ -55,9 +57,46 @@ def N_(message):
     return message
 
 
+LANGUAGE_OPTIONS = (
+    ("system", N_("System default")),
+    ("en", "English"),
+    ("de", "Deutsch"),
+    ("el", "Ελληνικά"),
+    ("it", "Italiano"),
+    ("pt_BR", "Português (Brasil)"),
+    ("zh_Hant", "繁體中文"),
+)
+SUPPORTED_LANGUAGES = frozenset(language for language, _name in LANGUAGE_OPTIONS)
+
+
 def C_(message, **values):
     """Format an English wire message; never translate shared backend state."""
     return message.format(**values)
+
+
+def _get_translation():
+    global _translation, _translation_language, _active_language
+    if _active_language is None:
+        from bazzite_portal.core.storage import Store
+        _active_language = Store().preferences()["language"]
+    if _translation is None or _translation_language != _active_language:
+        arguments = {} if _active_language == "system" else {
+            "languages": [_active_language],
+        }
+        _translation = _gettext.translation(
+            DOMAIN, localedir=LOCALE_DIR, fallback=True, **arguments)
+        _translation_language = _active_language
+    return _translation
+
+
+def set_language(language):
+    """Refresh translations for the selected preference in this process."""
+    global _active_language, _translation
+    selected = (language if isinstance(language, str)
+                and language in SUPPORTED_LANGUAGES else "system")
+    if selected != _active_language:
+        _active_language = selected
+        _translation = None
 
 
 @lru_cache(maxsize=1)
@@ -95,7 +134,7 @@ def format_message(message):
     if translated != message:
         return translated
     # With no installed catalog there is nothing to translate or compile.
-    if type(_translation) is _gettext.NullTranslations:
+    if type(_get_translation()) is _gettext.NullTranslations:
         return message
     # Compose Brew progress subtitles from existing independently translated
     # labels. Package names stay verbatim, as they do in installation progress.

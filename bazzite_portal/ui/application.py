@@ -31,7 +31,9 @@ from bazzite_portal.input.controller import (
     ControllerPriority,
 )
 from bazzite_portal.core.storage import Store
-from bazzite_portal.core.i18n import C_, N_, _, channel_name, format_message
+from bazzite_portal.core.i18n import (
+    C_, LANGUAGE_OPTIONS, N_, _, channel_name, format_message,
+)
 from bazzite_portal.core.errors import error_text, public_error
 from bazzite_portal.input.prompts import set_prompt_visible
 from bazzite_portal.ui import system_info as system_presentation
@@ -2886,6 +2888,27 @@ class Window(Adw.ApplicationWindow, SystemManagementUI):
         self.controller_style_dropdown.set_visible(False)
         self._sync_controller_style_mode()
         preferences.add(self.controller_style_row)
+        language_values = [language for language, _name in LANGUAGE_OPTIONS]
+        language_names = [_(name) for _language, name in LANGUAGE_OPTIONS]
+        self.language_row = Adw.ActionRow(
+            title=_("App language"),
+            subtitle=_("Choose the app language. Restart the app to apply changes."))
+        self.language_row.controller_focus_row = True
+        self.language_dropdown = Gtk.DropDown(
+            model=Gtk.StringList.new(language_names), valign=Gtk.Align.CENTER)
+        self.language_dropdown.controller_exclude_focus = True
+        self.language_dropdown.set_size_request(-1, 36)
+        current_language = self.store.preferences()["language"]
+        self.language_dropdown.set_selected(language_values.index(current_language))
+        self.language_dropdown.set_tooltip_text(_("App language"))
+        self.language_dropdown.connect("notify::selected", self._language_selected)
+        self.language_row.add_suffix(self.language_dropdown)
+        self.language_dropdown.set_hexpand(False)
+        self.language_dropdown.set_halign(Gtk.Align.END)
+        self.language_row.set_activatable(True)
+        self.language_row.connect(
+            "activated", lambda *_: self.language_dropdown.emit("activate"))
+        preferences.add(self.language_row)
         from bazzite_portal.artwork.appearance import THEMES, THEME_NAMES
         theme_names = [_(name) for _theme_id, name in THEME_NAMES]
         self.notification_theme_row = Adw.ActionRow(title=_("Notification icon theme"))
@@ -3023,6 +3046,7 @@ class Window(Adw.ApplicationWindow, SystemManagementUI):
                              track=channel_name("unstable")),
                          N_("OK"), lambda: None, informational=True,
                          documentation_url="https://docs.bazzite.gg/Installing_and_Managing_Software/Updates_Rollbacks_and_Rebasing/rebase_guide/")
+        return saved
 
     def _controller_style_selected(self, dropdown, _property):
         if self.updating_settings:
@@ -3032,6 +3056,14 @@ class Window(Adw.ApplicationWindow, SystemManagementUI):
         if selected < len(values):
             self._preference("controller_prompt_style", values[selected])
             self.controller_style_choice.set_text((_("Automatic"), "Xbox", "PlayStation")[selected])
+
+    def _language_selected(self, dropdown, _property):
+        if self.updating_settings:
+            return
+        if dropdown.get_selected() < len(LANGUAGE_OPTIONS):
+            if self._preference(
+                    "language", LANGUAGE_OPTIONS[dropdown.get_selected()][0]):
+                self.toast(N_("Restart Bazzite Portal to apply the language change."))
 
     def _open_controller_style(self, *_):
         if not self.controller_navigation:
@@ -3068,6 +3100,8 @@ class Window(Adw.ApplicationWindow, SystemManagementUI):
             self.client.call("ReloadPreferences")
 
     def _reset(self):
+        language_was_overridden = self.store.preferences()["language"] != "system"
+
         def reset_done(_result=None):
             self.store.errors.clear()
             self.updating_settings = True
@@ -3075,6 +3109,9 @@ class Window(Adw.ApplicationWindow, SystemManagementUI):
                 switch.set_active(not self.store.preferences()[key] if key == "show_indicator" else self.store.preferences()[key])
             self.controller_style_dropdown.set_selected(("auto", "xbox", "playstation").index(
                 self.store.preferences()["controller_prompt_style"]))
+            language_values = [language for language, _name in LANGUAGE_OPTIONS]
+            self.language_dropdown.set_selected(language_values.index(
+                self.store.preferences()["language"]))
             from bazzite_portal.artwork.appearance import THEMES, THEME_NAMES
             self.notification_theme_dropdown.set_selected(THEMES.index(self.store.preferences()["notification_icon_theme"]))
             self.notification_theme_choice.set_text(_(THEME_NAMES[self.notification_theme_dropdown.get_selected()][1]))
@@ -3089,7 +3126,8 @@ class Window(Adw.ApplicationWindow, SystemManagementUI):
             self._render_home_activity()
             self._set_update_console(self.store.preferences()["show_logs"])
             self.settings_errors.set_text("\n".join(public_error(error, N_("Could not save or load app preferences. Open Logs for details."), context='App preferences') for error in self.store.errors))
-            self.toast(N_("Local app data cleared."))
+            self.toast(N_("Local app data cleared. Restart Bazzite Portal to apply language changes.")
+                       if language_was_overridden else N_("Local app data cleared."))
         if self.client:
             self.client.call("ResetPreferences", callback=reset_done)
         elif self.store.reset():
