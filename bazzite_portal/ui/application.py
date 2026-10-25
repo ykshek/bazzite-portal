@@ -2902,12 +2902,42 @@ class Window(Adw.ApplicationWindow, SystemManagementUI):
         self.language_dropdown.set_selected(language_values.index(current_language))
         self.language_dropdown.set_tooltip_text(_("App language"))
         self.language_dropdown.connect("notify::selected", self._language_selected)
+        self.language_choice, language_choice = choice_label(
+            language_names, self.language_dropdown.get_selected())
+        self.language_controls = Gtk.Box(
+            orientation=Gtk.Orientation.HORIZONTAL, spacing=4)
+        self.language_controls.add_css_class("controller-style-pill")
+        self.language_controls.set_size_request(-1, 36)
+        self.language_controls.set_valign(Gtk.Align.CENTER)
+        self.language_previous = Gtk.Button.new_from_icon_name("pan-start-symbolic")
+        self.language_next = Gtk.Button.new_from_icon_name("pan-end-symbolic")
+        for arrow in (self.language_previous, self.language_next):
+            arrow.set_focusable(False)
+            arrow.add_css_class("flat")
+            arrow.add_css_class("controller-style-arrow")
+        self.language_previous.connect(
+            "clicked", lambda *_: self._cycle_language(-1))
+        self.language_next.connect(
+            "clicked", lambda *_: self._cycle_language(1))
+        self.language_controls.append(self.language_previous)
+        self.language_controls.append(language_choice)
+        self.language_controls.append(self.language_next)
+        self.language_row.add_suffix(self.language_controls)
         self.language_row.add_suffix(self.language_dropdown)
+        self.language_controls.set_hexpand(False)
+        self.language_controls.set_halign(Gtk.Align.END)
         self.language_dropdown.set_hexpand(False)
         self.language_dropdown.set_halign(Gtk.Align.END)
+        self.language_size_group = Gtk.SizeGroup(
+            mode=Gtk.SizeGroupMode.HORIZONTAL)
+        self.language_size_group.add_widget(self.language_controls)
+        self.language_size_group.add_widget(self.language_dropdown)
         self.language_row.set_activatable(True)
         self.language_row.connect(
-            "activated", lambda *_: self.language_dropdown.emit("activate"))
+            "activated", lambda *_: self.language_dropdown.emit("activate")
+            if not self.controller_navigation else None)
+        self.language_controls.set_visible(self.controller_navigation)
+        self.language_dropdown.set_visible(not self.controller_navigation)
         preferences.add(self.language_row)
         from bazzite_portal.artwork.appearance import THEMES, THEME_NAMES
         theme_names = [_(name) for _theme_id, name in THEME_NAMES]
@@ -3064,6 +3094,13 @@ class Window(Adw.ApplicationWindow, SystemManagementUI):
             if self._preference(
                     "language", LANGUAGE_OPTIONS[dropdown.get_selected()][0]):
                 self.toast(N_("Restart Bazzite Portal to apply the language change."))
+            self.language_choice.set_text(
+                _(LANGUAGE_OPTIONS[dropdown.get_selected()][1]))
+
+    def _cycle_language(self, delta):
+        selected = self.language_dropdown.get_selected()
+        self.language_dropdown.set_selected(
+            (selected + delta) % len(LANGUAGE_OPTIONS))
 
     def _open_controller_style(self, *_):
         if not self.controller_navigation:
@@ -3087,6 +3124,9 @@ class Window(Adw.ApplicationWindow, SystemManagementUI):
             return
         self.controller_style_controls.set_visible(self.controller_navigation)
         self.controller_style_dropdown.set_visible(not self.controller_navigation)
+        if hasattr(self, "language_dropdown"):
+            self.language_controls.set_visible(self.controller_navigation)
+            self.language_dropdown.set_visible(not self.controller_navigation)
         if hasattr(self, "notification_theme_dropdown"):
             self.notification_theme_controls.set_visible(self.controller_navigation)
             self.notification_theme_dropdown.set_visible(not self.controller_navigation)
@@ -3112,6 +3152,8 @@ class Window(Adw.ApplicationWindow, SystemManagementUI):
             language_values = [language for language, _name in LANGUAGE_OPTIONS]
             self.language_dropdown.set_selected(language_values.index(
                 self.store.preferences()["language"]))
+            self.language_choice.set_text(
+                _(LANGUAGE_OPTIONS[self.language_dropdown.get_selected()][1]))
             from bazzite_portal.artwork.appearance import THEMES, THEME_NAMES
             self.notification_theme_dropdown.set_selected(THEMES.index(self.store.preferences()["notification_icon_theme"]))
             self.notification_theme_choice.set_text(_(THEME_NAMES[self.notification_theme_dropdown.get_selected()][1]))
@@ -3510,6 +3552,12 @@ class Window(Adw.ApplicationWindow, SystemManagementUI):
                 and focus_now is self.notification_theme_row and command in ("left", "right")):
             self._cycle_notification_theme(-1 if command == "left" else 1)
             self._set_controller_focus(self.notification_theme_row)
+            self._update_controller_legend(labels)
+            return
+        if (not self.modal and self.stack.get_visible_child_name() == "Settings"
+                and focus_now is self.language_row and command in ("left", "right")):
+            self._cycle_language(-1 if command == "left" else 1)
+            self._set_controller_focus(self.language_row)
             self._update_controller_legend(labels)
             return
         if (self.stack.get_visible_child_name() == "Settings" and focus_now is self.controller_style_row
