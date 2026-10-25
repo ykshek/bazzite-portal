@@ -36,6 +36,7 @@ from bazzite_portal.input.controller import (
 )
 from bazzite_portal.core.storage import Store
 from bazzite_portal.core.gtk_themes import (
+    find_gtk4_theme_stylesheet,
     list_gtk4_themes,
     should_use_server_side_decorations,
 )
@@ -125,21 +126,34 @@ def install_controller_focus_style():
         b".bazzite-controller-immediate { transition: none; } "
         b"button.confirmation-choice:hover { background-color: alpha(@accent_bg_color, 0.20); "
         b"box-shadow: inset 0 0 0 1px alpha(@accent_color, 0.55); } "
+        b"window.bazzite-plasma-theme .bazzite-controller-focus { border-radius: 4px; } "
         b".bazzite-favorite { color: @warning_color; } "
         b"row.destructive-action .title { color: @error_color; } "
         b"button.bazzite-update-cta { background-color: #8A2BE2; color: #ffffff; } "
         b"button.bazzite-update-cta:hover { background-color: #7424C5; color: #ffffff; } "
         b"box.controller-style-pill { min-height: 36px; padding: 2px 6px; "
         b"background-color: alpha(@theme_fg_color, 0.06); border: 1px solid alpha(@theme_fg_color, 0.16); border-radius: 9px; } "
-        b".layer-selection-row { min-height: 36px; padding: 2px 8px; border-radius: 8px; } "
-        b".layer-selection-row:hover { background-color: alpha(@theme_fg_color, 0.055); } "
+        b"window:not(.bazzite-plasma-theme) .layer-selection-row { min-height: 36px; "
+        b"padding: 2px 8px; border-radius: 8px; } "
+        b"window:not(.bazzite-plasma-theme) .layer-selection-row:hover { "
+        b"background-color: alpha(@theme_fg_color, 0.055); } "
         b".layer-selection-footer { padding-top: 2px; } "
         b"box.community-favicon-tile { background-color: #f5f5f5; "
         b"border: 1px solid #dedede; border-radius: 8px; padding: 0; } "
+        b"window.bazzite-plasma-theme box.community-favicon-tile { "
+        b"background-color: @theme_base_color; border-color: @borders; } "
         b"button.controller-style-arrow { background: transparent; box-shadow: none; padding: 3px; min-width: 28px; min-height: 28px; } "
         b"row.bazzite-update-active-row { background-color: alpha(#8A2BE2, 0.10); } "
-        b"row.bazzite-update-step-row .title { font-size: 1.12em; font-weight: 600; } "
-        b"row.bazzite-update-step-row .subtitle { font-size: 1.02em; } "
+        b"window:not(.bazzite-plasma-theme) row.bazzite-update-step-row .title { "
+        b"font-size: 1.12em; font-weight: 600; } "
+        b"window:not(.bazzite-plasma-theme) row.bazzite-update-step-row .subtitle { "
+        b"font-size: 1.02em; } "
+        b"window.bazzite-plasma-theme button.bazzite-update-cta { "
+        b"background-color: @accent_bg_color; color: @accent_fg_color; } "
+        b"window.bazzite-plasma-theme button.bazzite-update-cta:hover { "
+        b"background-color: shade(@accent_bg_color, 0.88); } "
+        b"window.bazzite-plasma-theme row.bazzite-update-active-row { "
+        b"background-color: alpha(@accent_bg_color, 0.10); } "
         b".release-table .table-cell, .release-table .table-header { padding: 8px; border: 1px solid alpha(@theme_fg_color, 0.15); } "
         b".release-table .table-header { background: alpha(@theme_fg_color, 0.08); } "
         b".release-table .alternate-row { background: alpha(@theme_fg_color, 0.04); } "
@@ -385,6 +399,10 @@ class Window(Adw.ApplicationWindow, SystemManagementUI):
 
     def set_decoration_mode(self, use_server_side_decorations):
         self.set_decorated(use_server_side_decorations)
+        if use_server_side_decorations:
+            self.add_css_class("bazzite-plasma-theme")
+        else:
+            self.remove_css_class("bazzite-plasma-theme")
         show_client_title_buttons = not use_server_side_decorations
         self.header.set_show_start_title_buttons(show_client_title_buttons)
         self.header.set_show_end_title_buttons(show_client_title_buttons)
@@ -3840,6 +3858,8 @@ class Application(Adw.Application):
         self.store = Store()
         self.system_gtk_theme = "Adwaita"
         self.use_server_side_decorations = False
+        self._theme_css_provider = None
+        self._theme_accent_provider = None
         self.add_main_option("updates", 0, GLib.OptionFlags.NONE, GLib.OptionArg.NONE, N_("Open Updates"), None)
         self.add_main_option("action-id", 0, GLib.OptionFlags.NONE, GLib.OptionArg.STRING, N_("Open a Portal tool"), "ID")
 
@@ -3886,6 +3906,77 @@ class Application(Adw.Application):
         }
         default_scheme = Adw.ColorScheme.FORCE_DARK if gaming_mode() else Adw.ColorScheme.DEFAULT
         self.get_style_manager().set_color_scheme(color_schemes.get(scheme, default_scheme))
+        self._apply_plasma_theme(effective_theme, settings)
+
+    def _apply_plasma_theme(self, theme_name, settings):
+        display = Gdk.Display.get_default()
+        if display is None:
+            return
+
+        use_plasma_theme = should_use_server_side_decorations(theme_name)
+        stylesheet = (
+            find_gtk4_theme_stylesheet(
+                theme_name, dark=self.get_style_manager().get_dark()
+            )
+            if use_plasma_theme else None
+        )
+        provider = None
+        if stylesheet is not None:
+            provider = Gtk.CssProvider()
+            provider.connect(
+                "parsing-error",
+                lambda _provider, _section, error: log.warning(
+                    "Could not parse KDE GTK theme stylesheet %s: %s",
+                    stylesheet, error,
+                ),
+            )
+            try:
+                provider.load_from_path(str(stylesheet))
+            except GLib.Error:
+                log.warning(
+                    "Could not load KDE GTK theme stylesheet %s",
+                    stylesheet, exc_info=True,
+                )
+                provider = None
+
+        if self._theme_css_provider is not None:
+            Gtk.StyleContext.remove_provider_for_display(display, self._theme_css_provider)
+        self._theme_css_provider = provider
+        if provider is not None:
+            Gtk.StyleContext.add_provider_for_display(
+                display, provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION + 1
+            )
+
+        accent_provider = None
+        accent_property = settings.find_property("gtk-accent-color") if settings else None
+        if use_plasma_theme and accent_property is not None:
+            accent = settings.get_property("gtk-accent-color")
+            if accent is not None:
+                red, green, blue = accent.red, accent.green, accent.blue
+
+                def linearize(channel):
+                    return channel / 12.92 if channel <= 0.04045 else ((channel + 0.055) / 1.055) ** 2.4
+
+                luminance = (0.2126 * linearize(red)
+                             + 0.7152 * linearize(green)
+                             + 0.0722 * linearize(blue))
+                foreground = "#000000" if luminance > 0.179 else "#ffffff"
+                accent_provider = Gtk.CssProvider()
+                accent_provider.load_from_data(
+                    (
+                        f"@define-color accent_color {accent.to_string()}; "
+                        f"@define-color accent_bg_color {accent.to_string()}; "
+                        f"@define-color accent_fg_color {foreground};"
+                    ).encode()
+                )
+
+        if self._theme_accent_provider is not None:
+            Gtk.StyleContext.remove_provider_for_display(display, self._theme_accent_provider)
+        self._theme_accent_provider = accent_provider
+        if accent_provider is not None:
+            Gtk.StyleContext.add_provider_for_display(
+                display, accent_provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION + 2
+            )
 
     def do_activate(self):
         if not self.window:

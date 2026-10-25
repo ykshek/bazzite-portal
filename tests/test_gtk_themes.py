@@ -3,6 +3,7 @@ import unittest
 from pathlib import Path
 
 from bazzite_portal.core.gtk_themes import (
+    find_gtk4_theme_stylesheet,
     list_gtk4_themes,
     should_use_server_side_decorations,
 )
@@ -10,6 +11,32 @@ from bazzite_portal.core.storage import Store
 
 
 class GtkThemeTests(unittest.TestCase):
+    def test_finds_theme_stylesheet_and_dark_variant(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            theme_dir = root / "themes" / "Breeze" / "gtk-4.0"
+            theme_dir.mkdir(parents=True)
+            light = theme_dir / "gtk.css"
+            dark = theme_dir / "gtk-dark.css"
+            light.write_text("/* light */")
+            dark.write_text("/* dark */")
+            environ = {"XDG_DATA_HOME": str(root), "XDG_DATA_DIRS": ""}
+
+            self.assertEqual(
+                dark,
+                find_gtk4_theme_stylesheet("Breeze", dark=True, environ=environ),
+            )
+            self.assertEqual(
+                light,
+                find_gtk4_theme_stylesheet("Breeze", dark=False, environ=environ),
+            )
+
+            dark.unlink()
+            self.assertEqual(
+                light,
+                find_gtk4_theme_stylesheet("Breeze", dark=True, environ=environ),
+            )
+
     def test_server_decorations_require_kde_and_non_adwaita_theme(self):
         kde = {"XDG_CURRENT_DESKTOP": "KDE"}
         plasma = {"XDG_CURRENT_DESKTOP": "KDE:Plasma"}
