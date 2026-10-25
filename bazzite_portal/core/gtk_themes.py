@@ -1,5 +1,6 @@
 """Discovery of installed GTK 4 themes."""
 import os
+import re
 from pathlib import Path
 
 
@@ -28,3 +29,15 @@ def list_gtk4_themes(environ=None, home=None):
         except OSError:
             continue
     return sorted(names, key=str.casefold)
+
+
+def should_use_server_side_decorations(theme_name, environ=None):
+    """Use KDE's native titlebar for GTK themes other than Adwaita."""
+    environ = os.environ if environ is None else environ
+    desktop = (environ.get("XDG_CURRENT_DESKTOP", "") + ":" +
+               environ.get("DESKTOP_SESSION", "")).casefold()
+    tokens = set(re.findall(r"[a-z0-9]+", desktop))
+    is_kde = bool(tokens & {"kde", "plasma", "plasmawayland", "plasmax11"})
+    theme = str(theme_name or "").strip().casefold()
+    is_adwaita = theme == "adwaita" or theme.startswith("adwaita-")
+    return is_kde and bool(theme) and not is_adwaita

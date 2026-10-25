@@ -2,11 +2,26 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from bazzite_portal.core.gtk_themes import list_gtk4_themes
+from bazzite_portal.core.gtk_themes import (
+    list_gtk4_themes,
+    should_use_server_side_decorations,
+)
 from bazzite_portal.core.storage import Store
 
 
 class GtkThemeTests(unittest.TestCase):
+    def test_server_decorations_require_kde_and_non_adwaita_theme(self):
+        kde = {"XDG_CURRENT_DESKTOP": "KDE"}
+        plasma = {"XDG_CURRENT_DESKTOP": "KDE:Plasma"}
+        gnome = {"XDG_CURRENT_DESKTOP": "GNOME"}
+
+        self.assertTrue(should_use_server_side_decorations("Breeze", kde))
+        self.assertTrue(should_use_server_side_decorations("Breeze", plasma))
+        self.assertFalse(should_use_server_side_decorations("Adwaita", kde))
+        self.assertFalse(should_use_server_side_decorations("Adwaita-dark", kde))
+        self.assertFalse(should_use_server_side_decorations("Breeze", gnome))
+        self.assertFalse(should_use_server_side_decorations("", kde))
+
     def test_lists_gtk4_themes_from_xdg_locations(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

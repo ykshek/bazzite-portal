@@ -35,7 +35,10 @@ from bazzite_portal.input.controller import (
     controller_button_glyph,
 )
 from bazzite_portal.core.storage import Store
-from bazzite_portal.core.gtk_themes import list_gtk4_themes
+from bazzite_portal.core.gtk_themes import (
+    list_gtk4_themes,
+    should_use_server_side_decorations,
+)
 from bazzite_portal.core.i18n import C_, N_, _, channel_name, format_message
 from bazzite_portal.core.errors import error_text, public_error
 from bazzite_portal.input.prompts import set_prompt_visible
@@ -323,6 +326,7 @@ class Window(Adw.ApplicationWindow, SystemManagementUI):
         self.back_button.connect("clicked", lambda *_: self._header_back())
         header.pack_start(self.back_button)
         toolbar.add_top_bar(header)
+        self.set_decoration_mode(app.use_server_side_decorations)
         self.stack = Gtk.Stack(transition_type=Gtk.StackTransitionType.CROSSFADE)
         toolbar.set_content(self.stack)
         try:
@@ -378,6 +382,12 @@ class Window(Adw.ApplicationWindow, SystemManagementUI):
     def toast(self, message):
         if not self.closing:
             self.notices.add_toast(Adw.Toast(title=format_message(message)[:500]))
+
+    def set_decoration_mode(self, use_server_side_decorations):
+        self.set_decorated(use_server_side_decorations)
+        show_client_title_buttons = not use_server_side_decorations
+        self.header.set_show_start_title_buttons(show_client_title_buttons)
+        self.header.set_show_end_title_buttons(show_client_title_buttons)
 
     def _install_input_mode_controllers(self, window):
         for signal in ("notify::is-active", "map", "unmap"):
@@ -3829,6 +3839,7 @@ class Application(Adw.Application):
         self.window = None
         self.store = Store()
         self.system_gtk_theme = "Adwaita"
+        self.use_server_side_decorations = False
         self.add_main_option("updates", 0, GLib.OptionFlags.NONE, GLib.OptionArg.NONE, N_("Open Updates"), None)
         self.add_main_option("action-id", 0, GLib.OptionFlags.NONE, GLib.OptionArg.STRING, N_("Open a Portal tool"), "ID")
 
@@ -3852,10 +3863,21 @@ class Application(Adw.Application):
             theme_name = preferences.get("gtk_theme", "system")
             if theme_name != "system" and theme_name not in {"Adwaita", *list_gtk4_themes()}:
                 theme_name = "system"
+            effective_theme = (
+                self.system_gtk_theme if theme_name == "system" else theme_name
+            )
             settings.set_property(
                 "gtk-theme-name",
-                self.system_gtk_theme if theme_name == "system" else theme_name,
+                effective_theme,
             )
+        else:
+            effective_theme = self.system_gtk_theme
+
+        self.use_server_side_decorations = should_use_server_side_decorations(
+            effective_theme
+        )
+        if self.window is not None:
+            self.window.set_decoration_mode(self.use_server_side_decorations)
 
         scheme = preferences.get("color_scheme", "system")
         color_schemes = {
